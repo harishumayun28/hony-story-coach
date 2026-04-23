@@ -3,6 +3,7 @@ Group08_Dashboard.py — HONY Story Coach
 CIS 434 Group 8, Simon Business School, Spring 2026
 Run: streamlit run Group08_Dashboard.py
 """
+
 import os
 import re
 import warnings
@@ -17,6 +18,10 @@ import shap
 import matplotlib.pyplot as plt
 from sklearn.metrics.pairwise import cosine_similarity
 from vaderSentiment.vaderSentiment import SentimentIntensityAnalyzer
+import gc
+
+# Force garbage collection to stay under Streamlit Cloud memory limits
+gc.enable()
 
 st.set_page_config(
     page_title="HONY Story Coach",
@@ -74,6 +79,7 @@ def load_artifacts():
             lambda r: [t.lower().strip() for t in str(r).split("|") if t.strip()]
             if pd.notna(r) else [])
         bench_matrix = tv_rec.transform(bench["text"].tolist())
+        gc.collect()
         return dict(shap_model=shap_model, scaler=scaler, explainer=explainer,
                     tv_rec=tv_rec, lda=lda, lda_vec=lda_vec, meta=meta,
                     bench=bench, bench_matrix=bench_matrix, ok=True)
