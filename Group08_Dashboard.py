@@ -121,7 +121,7 @@ if not arts["ok"]:
     st.stop()
 
 rf_explainer = arts["rf_explainer"]
-rf_model     = rf_explainer.model          # the RF itself lives inside the explainer
+rf_model     = joblib.load(f"{ARTIFACT_DIR}/rf_model.pkl")          # the RF itself lives inside the explainer
 scaler       = arts["scaler"]
 tv_rec       = arts["tv_rec"]
 lda          = arts["lda"]
