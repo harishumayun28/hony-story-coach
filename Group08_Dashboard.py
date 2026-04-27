@@ -62,7 +62,6 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # ── Plain-English SHAP feature labels ────────────────────────────────────────
-# Maps internal feature names → what a non-technical user sees on the chart
 SHAP_LABELS = {
     "word_count":          "Story length (words)",
     "sentence_count":      "Number of sentences",
@@ -79,7 +78,6 @@ SHAP_LABELS = {
 }
 
 # ── Intuitive topic engagement descriptions ───────────────────────────────────
-# Shown as plain-English averages, not data-science notes/day notation
 TOPIC_ENG = {
     "Personal Struggle & Night Stories": "around 94 likes and reblogs per day on average  ·  highest engagement",
     "Family & Parenthood":               "around 85 likes and reblogs per day on average",
@@ -97,22 +95,22 @@ ARTIFACT_DIR = "."
 @st.cache_resource
 def load_artifacts():
     try:
-        # Single model family: Random Forest for both prediction and SHAP
-        perf_model  = joblib.load(f"{ARTIFACT_DIR}/perf_model.pkl")       # RF Combined — best AUC
-        rf_explainer = joblib.load(f"{ARTIFACT_DIR}/rf_explainer.pkl")    # RF SHAP on engineered features
-        scaler      = joblib.load(f"{ARTIFACT_DIR}/scaler.pkl")
-        tv_rec      = joblib.load(f"{ARTIFACT_DIR}/tfidf_rec.pkl")
-        lda         = joblib.load(f"{ARTIFACT_DIR}/lda_model.pkl")
-        lda_vec     = joblib.load(f"{ARTIFACT_DIR}/lda_vectorizer.pkl")
-        meta        = joblib.load(f"{ARTIFACT_DIR}/metadata.pkl")
-        bench       = pd.read_csv(f"{ARTIFACT_DIR}/bench_filtered.csv")
+        # Single file does everything — RF trained on 12 engineered features
+        # prediction + SHAP explanations both come from this one model
+        rf_explainer = joblib.load(f"{ARTIFACT_DIR}/rf_explainer.pkl")
+        scaler       = joblib.load(f"{ARTIFACT_DIR}/scaler.pkl")
+        tv_rec       = joblib.load(f"{ARTIFACT_DIR}/tfidf_rec.pkl")
+        lda          = joblib.load(f"{ARTIFACT_DIR}/lda_model.pkl")
+        lda_vec      = joblib.load(f"{ARTIFACT_DIR}/lda_vectorizer.pkl")
+        meta         = joblib.load(f"{ARTIFACT_DIR}/metadata.pkl")
+        bench        = pd.read_csv(f"{ARTIFACT_DIR}/bench_filtered.csv")
         bench["tags_parsed"] = bench["tags"].apply(
             lambda r: [t.lower().strip() for t in str(r).split("|") if t.strip()]
             if pd.notna(r) else [])
         bench_matrix = tv_rec.transform(bench["text"].tolist())
         gc.collect()
-        return dict(perf_model=perf_model, rf_explainer=rf_explainer,
-                    scaler=scaler, tv_rec=tv_rec, lda=lda, lda_vec=lda_vec,
+        return dict(rf_explainer=rf_explainer, scaler=scaler,
+                    tv_rec=tv_rec, lda=lda, lda_vec=lda_vec,
                     meta=meta, bench=bench, bench_matrix=bench_matrix, ok=True)
     except Exception as e:
         return {"ok": False, "error": str(e)}
@@ -122,8 +120,8 @@ if not arts["ok"]:
     st.error(f"Could not load model artifacts.\n\n{arts['error']}")
     st.stop()
 
-perf_model   = arts["perf_model"]
 rf_explainer = arts["rf_explainer"]
+rf_model     = rf_explainer.model          # the RF itself lives inside the explainer
 scaler       = arts["scaler"]
 tv_rec       = arts["tv_rec"]
 lda          = arts["lda"]
@@ -133,10 +131,8 @@ bench        = arts["bench"]
 bench_matrix = arts["bench_matrix"]
 FEATURES     = meta["features"]
 TOPIC_LABELS = meta["topic_labels"]
-analyzer     = SentimentIntensityAnalyzer()
-
-# Readable labels in the same order as FEATURES
 FEATURE_LABELS = [SHAP_LABELS.get(f, f) for f in FEATURES]
+analyzer     = SentimentIntensityAnalyzer()
 
 # ── Feature extraction ────────────────────────────────────────────────────────
 def extract_features(text):
@@ -160,7 +156,6 @@ def extract_features(text):
 
 # ── Always-3 suggestions ──────────────────────────────────────────────────────
 def get_recommendations(feats, shap_vals):
-    """Guaranteed 3 suggestions, ranked by SHAP impact, with fallbacks."""
     shap_map = dict(zip(FEATURES, shap_vals))
     wc  = feats["word_count"]
     dr  = feats["dialogue_ratio"]
@@ -270,7 +265,7 @@ def get_api_key():
 
 # ── Rewrite prompt ────────────────────────────────────────────────────────────
 def build_rewrite_prompt(draft, feats, recs):
-    wc = feats["word_count"]
+    wc        = feats["word_count"]
     target_wc = min(wc, 380) if wc > 380 else wc
     rec_lines = "\n".join([f"  - {h}: {d}" for h, d in recs])
     return f"""You are an editorial assistant for Humans of New York (HONY), the narrative photography blog by Brandon Stanton. HONY posts are first-person, intimate, grounded in specific detail, and always centre the subject's own voice.
@@ -299,16 +294,16 @@ WHAT I CHANGED:
 # ── Parse rewrite response ────────────────────────────────────────────────────
 def parse_response(text):
     if "WHAT I CHANGED:" in text:
-        parts = text.split("WHAT I CHANGED:", 1)
+        parts   = text.split("WHAT I CHANGED:", 1)
         rewrite = parts[0].replace("REWRITTEN STORY:", "").strip()
-        raw = parts[1].strip()
+        raw     = parts[1].strip()
     elif "What I Changed:" in text:
-        parts = text.split("What I Changed:", 1)
+        parts   = text.split("What I Changed:", 1)
         rewrite = parts[0].replace("REWRITTEN STORY:", "").replace("Rewritten Story:", "").strip()
-        raw = parts[1].strip()
+        raw     = parts[1].strip()
     else:
         rewrite = text.strip()
-        raw = "- Story rewritten to address editorial suggestions above"
+        raw     = "- Story rewritten to address editorial suggestions above"
     changes = [l.strip().lstrip("-•*123456789.)").strip()
                for l in raw.split("\n") if len(l.strip()) > 10]
     return rewrite, changes[:5]
@@ -342,22 +337,21 @@ if analyse:
         x_raw  = np.array([[feats[f] for f in FEATURES]])
         x_sc   = scaler.transform(x_raw)
 
-        # Prediction: RF Combined (best AUC, uses TF-IDF + engineered)
-        # We can't easily pass TF-IDF to perf_model here without re-vectorising
-        # so we use engineered features only for prediction in the dashboard
-        # (consistent with what explainer was trained on)
-        proba  = float(perf_model.predict_proba(x_sc)[0, 1])
+        # Prediction — RF on 12 engineered features (same model as SHAP)
+        proba  = float(rf_model.predict_proba(x_sc)[0, 1])
 
-        # SHAP: RF explainer on engineered features — plain-English labels
-        sv     = rf_explainer.shap_values(x_sc)
-        # For binary RF, shap_values returns a list [class0, class1] — take class 1
-        if isinstance(sv, list):
-            sv = sv[1]
-        sv = sv[0]
+        # SHAP values — RF returns list [class0, class1], take class 1
+        sv_raw = rf_explainer.shap_values(x_sc)
+        if isinstance(sv_raw, list):
+            sv = sv_raw[1][0]
+        elif hasattr(sv_raw, 'ndim') and sv_raw.ndim == 3:
+            sv = sv_raw[0, :, 1]
+        else:
+            sv = sv_raw[0]
 
         topic_label, _ = infer_topic(draft_input)
-        tags   = recommend_tags(draft_input)
-        recs   = get_recommendations(feats, sv)
+        tags  = recommend_tags(draft_input)
+        recs  = get_recommendations(feats, sv)
 
         st.session_state["results"] = dict(
             proba=proba, sv=sv, x_sc=x_sc, feats=feats,
@@ -483,16 +477,18 @@ if "results" in st.session_state:
             'Brandon should review and edit in his own voice before publishing.</div>',
             unsafe_allow_html=True)
 
-    # SHAP expander — plain-English labels on the chart
+    # SHAP expander — plain-English labels
     with st.expander("See the data behind this prediction"):
         try:
+            base_val = (float(rf_explainer.expected_value[1])
+                        if hasattr(rf_explainer.expected_value, '__len__')
+                        else float(rf_explainer.expected_value))
+
             shap_exp = shap.Explanation(
                 values=sv,
-                base_values=float(rf_explainer.expected_value)
-                            if not isinstance(rf_explainer.expected_value, (list, np.ndarray))
-                            else float(rf_explainer.expected_value[1]),
+                base_values=base_val,
                 data=x_sc[0],
-                feature_names=FEATURE_LABELS   # plain-English names here
+                feature_names=FEATURE_LABELS
             )
             fig, _ = plt.subplots(figsize=(8, 4))
             shap.waterfall_plot(shap_exp, show=False)
@@ -506,8 +502,7 @@ if "results" in st.session_state:
         st.markdown(
             '<div class="disclaimer">'
             'Prediction powered by a Random Forest model trained on 12 writing style features. '
-            'The chart shows which aspects of your story pushed the score up or down. '
-            'Bars pointing right helped your score; bars pointing left hurt it. '
+            'Bars pointing right helped your score — bars pointing left hurt it. '
             'Temporal features (year, month) were excluded to avoid era bias. '
             'Cross-validated accuracy: 0.85 AUC. Does not analyse the photograph.</div>',
             unsafe_allow_html=True)
