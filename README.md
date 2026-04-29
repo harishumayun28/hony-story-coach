@@ -1,6 +1,5 @@
 # HONY Story Coach
-### CIS 434 Social Media & Text Analytics — Group 8
-**Simon Business School, University of Rochester | Spring 2026**
+
 
 ---
 
@@ -46,20 +45,10 @@ This project delivers a **pre-publish engagement advisor** called the **Story Co
 ## Quick Start
 
 ```bash
-# 1. Install dependencies
-pip install -r requirements.txt
+The dashboard will open at : https://hony-story-coach.streamlit.app/
 
-# 2. Set your Tumblr API key (only needed if re-scraping)
-export TUMBLR_API_KEY="your_consumer_key_here"
-
-# 3. Run the analysis notebook to generate model artifacts
-# Open Group08_Analysis.ipynb and run all cells
-
-# 4. Launch the Story Coach
-streamlit run Group08_Dashboard.py
 ```
 
-The dashboard will open at `http://localhost:8501`.
 
 ---
 
@@ -123,12 +112,6 @@ The performance model uses TF-IDF + 12 engineered features. The dashboard model 
 - **Residual temporal confound.** After notes_per_day normalization, year still correlates with the target at r=−0.215 (reduced from −0.612). This reflects genuine audience size changes over the active era.
 
 ---
-
-## Team
-
-Group 8 — CIS 434 Social Media and Text Analytics, Spring 2026
-Simon Business School, University of Rochester
-
 ---
 
 ## Data Collection
