@@ -2,6 +2,7 @@
 
 
 ---
+The app will open at : https://hony-story-coach.streamlit.app/
 
 ## What is this?
 
@@ -39,16 +40,6 @@ This project delivers a **pre-publish engagement advisor** called the **Story Co
 │   └── bench_filtered.csv
 └── README.md
 ```
-
----
-
-## Quick Start
-
-```bash
-The dashboard will open at : https://hony-story-coach.streamlit.app/
-
-```
-
 
 ---
 
